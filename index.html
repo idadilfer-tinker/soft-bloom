@@ -259,7 +259,7 @@ function readFeatures(){
   const sw=Math.abs(lm[11].x-lm[12].x);if(sw<.05){feat.ok=false;return}
   const k=.28,mx=(lm[11].x+lm[12].x)/2;
   let hy=null;if(v(7)>.4&&v(8)>.4)hy=(lm[7].y+lm[8].y)/2;else if(v(2)>.4&&v(5)>.4)hy=(lm[2].y+lm[5].y)/2+.02;
-  if(v(0)>.4){if(hy!=null)feat.head=lerp(feat.head,(hy-lm[0].y)/sw,k);feat.yaw=lerp(feat.yaw,(mx-lm[0].x)/sw,k*.8)}
+  if(v(0)>.4){if(hy!=null)feat.head=lerp(feat.head,(hy-lm[0].y)/sw,.55);feat.yaw=lerp(feat.yaw,(mx-lm[0].x)/sw,k*.8)}
   const arm=(sh,el,wr)=>v(wr)>.4?(lm[sh].y-lm[wr].y)/sw:v(el)>.4?(lm[sh].y-lm[el].y)/sw*1.2:-1.2;
   feat.raiseL=lerp(feat.raiseL,arm(11,13,15),k);feat.raiseR=lerp(feat.raiseR,arm(12,14,16),k);
   const px=(w,e)=>v(w)>.4?lm[w].x:(v(e)>.4?lm[e].x:null);const a=px(15,13),b=px(16,14);if(a!=null&&b!=null)feat.spread=lerp(feat.spread,Math.abs(a-b)/sw,k);
@@ -301,7 +301,7 @@ function onEnter(s){
   if(s==='talked'){P(t('talked'));chord([392,523.25,659.25,783.99],.15)}
   if(s==='pickKind'){G.sel=-1;G.selT=0;P(t('pickKind'),t('pickHint'),'both')}
   if(s==='pickPlot'){G.sel=-1;G.selT=0;P(t('pickPlot'),t('pickHint'),'both')}
-  if(s==='sow'){G.flower=makeFlower(Math.floor(Math.random()*1e9));G.holdP=0;G.reps=0;G.up=false;G.openShown=[0,0,0];G.stemP=0;G.seedY=0;G.liftLive=0;
+  if(s==='sow'){G.flower=makeFlower(Math.floor(Math.random()*1e9));G.holdP=0;G.reps=0;G.up=false;G.openShown=[0,0,0];G.stemP=0;G.seedY=0;G.liftLive=0;G.sowMin=null;G.sowPeak=0;
     G.move=S.move==='alt'?(G.flowerIdx%2?'wide':'up'):S.move;if(S.look==='1')P(t('lookUp'),t('lookHint'),'both');else P('','',false)}
   if(s==='sowing'){P(t('sown'));chord([392,523.25,659.25])}
   if(s==='grow'){const k=G.move==='wide'?'armsWide':'armsUp';P(t(k),t('rainHint'))}
@@ -366,12 +366,15 @@ function update(dt){
   case 'pickKind':{const xs=[W*.28,W*.5,W*.72];const r=picker(xs,dt);prompt.sub=notSeen?t('sitBack'):t('pickHint');if(r>=0){G.kind=r;chord([523.25,659.25]);setState('pickPlot')}if(age()>100){G.kind=G.sel<0?0:G.sel;setState('pickPlot')}gentleRepeat();break}
   case 'pickPlot':{const fp=freePlots();const r=picker(fp.map(plotX),dt);prompt.sub=notSeen?t('sitBack'):t('pickHint');if(r>=0){G.plot=fp[r];chord([523.25,659.25]);setState('sow')}if(age()>100){G.plot=fp[Math.max(0,G.sel)];setState('sow')}gentleRepeat();break}
   case 'sow':{if(S.look!=='1'){if(age()>2.5)setState('sowing');break}
-    const lift=feat.ok?feat.head-headBase:0,thr=.10*easeMul();
-    if(lift>thr)G.holdP+=dt;else G.holdP=Math.max(0,G.holdP-dt*.6);G.liftLive=clamp(lift/thr,0,1);
+    // baseline = her resting head height right now (lower of calibration and the lowest seen in this step), so posture drift does not block it
+    if(feat.ok){G.sowMin=Math.min(G.sowMin==null?feat.head:G.sowMin,feat.head);}
+    const base=Math.min(headBase,G.sowMin==null?headBase:G.sowMin+.01),lift=feat.ok?feat.head-base:0;G.sowPeak=Math.max(G.sowPeak||0,lift);
+    const a=age();let thr=a>8?.035:a>4?.045:.06;if(a>5&&G.sowPeak>.02)thr=Math.min(thr,G.sowPeak*.8);
+    if(lift>thr)G.holdP+=dt/.2;else G.holdP=Math.max(0,G.holdP-dt*2);G.liftLive=clamp(lift/thr,0,1);
     prompt.sub=notSeen?t('sitBack'):(ctrl==='mouse'?t('mouseHint'):t('lookHint'));if(G.holdP>=1||age()>100)setState('sowing');gentleRepeat();break}
-  case 'sowing':{const a=age();G.seedY=easeIn(clamp(a/1.4,0,1));if(a>1.4&&!G.landed){G.landed=true;tone(196,1.6,.2,'triangle');
+  case 'sowing':{const a=age();G.seedY=easeIn(clamp(a/.9,0,1));if(a>.9&&!G.landed){G.landed=true;tone(196,1.6,.2,'triangle');
       for(let i=0;i<18;i++)G.sparks.push({x:centreX(),y:soilY(),vx:(Math.random()-.5)*160,vy:-Math.random()*140,life:1+Math.random()*.6})}
-    G.stemP=easeOut(clamp((a-1.5)/1.8,0,1));if(a>3.5){G.landed=false;setState('grow')}break}
+    G.stemP=easeOut(clamp((a-1)/1.4,0,1));if(a>2.6){G.landed=false;setState('grow')}break}
   case 'grow':{const N=+S.reps,live=armLive(G.move);G.live=live;countReps(live);
     const Pp=clamp((G.reps+Math.min(live,1)*.85)/N,0,1),locked=G.reps/N,win=[[0,.5],[.25,.75],[.5,1]];
     for(let l=0;l<3;l++){const tg=clamp((Math.max(Pp,locked)-win[l][0])/(win[l][1]-win[l][0]),0,1);G.openShown[l]+=(tg-G.openShown[l])*Math.min(1,dt*3)}
@@ -439,7 +442,7 @@ function render(tm){
   const cx=centreX(),cy=flowerCy(),Sz=flowerS();
   if(['sowing','grow','bloom','settle'].includes(state)&&(state!=='sowing'||G.stemP>0)){const sp=state==='sowing'?G.stemP:1;
     if(state!=='settle'){ctx.save();ctx.globalAlpha=.5;ctx.strokeStyle='#fff';ctx.lineWidth=3;ctx.filter='blur(1px)';ctx.beginPath();ctx.moveTo(cx,soilY());const yT=lerp(soilY(),cy+Sz*.04,sp);ctx.quadraticCurveTo(cx-Sz*.06,lerp(soilY(),yT,.5),cx,yT);ctx.stroke();ctx.restore()}}
-  if(state==='sow'||state==='sowing'){const sy=state==='sow'?H*.3+Math.sin(tm*1.2)*6:lerp(H*.3,soilY(),G.seedY);
+  if(state==='sow'||state==='sowing'){const sy=state==='sow'?H*.3+Math.sin(tm*1.2)*6-(G.liftLive||0)*12:lerp(H*.3,soilY(),G.seedY);
     if(!(state==='sowing'&&G.seedY>=1)){drawSeed(cx,sy,KIND[G.kind].seed,state==='sow'?.35+.65*Math.max(G.holdP,G.liftLive*.5):1,tm);
       if(state==='sow'){ring(cx,sy,Math.min(W,H)*.08,G.holdP);ctx.strokeStyle='rgba(58,47,85,'+(.25+.15*Math.sin(tm*2))+')';ctx.lineWidth=3;
         for(let i=0;i<3;i++){const y=H*.5+i*22-((tm*20)%22);ctx.beginPath();ctx.moveTo(cx-16,y+10);ctx.lineTo(cx,y);ctx.lineTo(cx+16,y+10);ctx.stroke()}}}}
